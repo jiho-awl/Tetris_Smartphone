@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LEGO Tetris 3D - 2 Players Mobile</title>
+<style>
+body{
+  margin:0;
+  background:linear-gradient(135deg,#fce38a,#f38181);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  font-family:Arial;
+}
+#container{display:flex;gap:30px; justify-content:center;}
+.board{text-align:center; position:relative;}
+canvas{
+  background:#cce3ff;
+  border-radius:12px;
+  border:5px solid white;
+}
+#winner{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.8);
+  color:white;
+  display:none;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  font-size:32px;
+}
+button{
+  padding:12px 25px;
+  font-size:20px;
+  border:none;
+  border-radius:20px;
+  cursor:pointer;
+  margin:5px;
+}
+.controls{
+  display:flex;
+  justify-content:center;
+  margin-top:10px;
+}
+.player-controls{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.control-row{
+  display:flex;
+  justify-content:center;
+}
+</style>
+</head>
+<body>
+
+<div id="container">
+  <div class="board" id="board1">
+    <h2>🧑 Player 1</h2>
+    <p>점수: <span id="scoreP1">0</span></p>
+    <canvas id="player1" width="300" height="600"></canvas>
+    <div class="controls">
+      <div class="player-controls">
+        <div class="control-row">
+          <button id="p1-left">◀</button>
+          <button id="p1-rotate">⟳</button>
+          <button id="p1-right">▶</button>
+        </div>
+        <div class="control-row">
+          <button id="p1-down">▼</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board" id="board2">
+    <h2>🧑 Player 2</h2>
+    <p>점수: <span id="scoreP2">0</span></p>
+    <canvas id="player2" width="300" height="600"></canvas>
+    <div class="controls">
+      <div class="player-controls">
+        <div class="control-row">
+          <button id="p2-left">◀</button>
+          <button id="p2-rotate">⟳</button>
+          <button id="p2-right">▶</button>
+        </div>
+        <div class="control-row">
+          <button id="p2-down">▼</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="winner">
+  <div id="winnerText"></div>
+  <button onclick="location.reload()">다시 하기</button>
+</div>
+
+<script>
+const COLS=10, ROWS=20, BLOCK=30, WIN_SCORE=1000;
+const COLORS=[null,"#ff6b6b","#4dabf7","#ffd43b","#69db7c","#b197fc"];
+const SHAPES=[
+ [[1,1,1,1]],
+ [[2,0,0],[2,2,2]],
+ [[0,3,3],[3,3,0]],
+ [[4,4],[4,4]],
+ [[0,5,0],[5,5,5]]
+];
+
+const rotate = m => m[0].map((_,i)=>m.map(r=>r[i]).reverse());
+const clone = m => m.map(r=>[...r]);
+
+function drawLego(ctx,x,y,color){
+  const px=x*BLOCK, py=y*BLOCK;
+  ctx.fillStyle=color;
+  ctx.fillRect(px,py,BLOCK,BLOCK);
+  ctx.fillStyle="rgba(255,255,255,0.35)";
+  ctx.fillRect(px,py,BLOCK,BLOCK/4);
+  ctx.fillStyle="rgba(0,0,0,0.2)";
+  ctx.fillRect(px,py+BLOCK*0.75,BLOCK,BLOCK/4);
+  ctx.beginPath();
+  ctx.arc(px+BLOCK/2,py+BLOCK/2,BLOCK/6,0,Math.PI*2);
+  ctx.fillStyle="rgba(255,255,255,0.4)";
+  ctx.fill();
+}
+
+// ---------- 게임 클래스 ----------
+function Game(canvas, scoreEl, playerName){
+  this.ctx=canvas.getContext("2d");
+  this.scoreEl=scoreEl;
+  this.playerName = playerName;
+  this.arena=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+  this.player={pos:{x:3,y:0},matrix:null};
+  this.score=0;
+  this.drop=0;
+  this.interval=500;
+  this.newPiece();
+}
+
+Game.prototype.newPiece=function(){
+  this.player.matrix=clone(SHAPES[Math.floor(Math.random()*SHAPES.length)]);
+  this.player.pos={x:3,y:0};
+};
+
+Game.prototype.collide=function(mat=this.player.matrix,pos=this.player.pos){
+  for(let y=0;y<mat.length;y++)
+    for(let x=0;x<mat[y].length;x++)
+      if(mat[y][x] && (this.arena[y+pos.y]?.[x+pos.x])!==0)
+        return true;
+  return false;
+};
+
+Game.prototype.merge=function(){
+  this.player.matrix.forEach((r,y)=>r.forEach((v,x)=>{
+    if(v) this.arena[y+this.player.pos.y][x+this.player.pos.x]=v;
+  }));
+};
+
+Game.prototype.clear=function(){
+  for(let y=ROWS-1;y>=0;y--){
+    if(this.arena[y].every(v=>v)){
+      this.arena.splice(y,1);
+      this.arena.unshift(Array(COLS).fill(0));
+      this.score+=100;
+      this.scoreEl.textContent=this.score;
+      if(this.score>=WIN_SCORE) endGame(this.playerName);
+      y++;
+    }
+  }
+};
+
+Game.prototype.update=function(dt){
+  this.drop+=dt;
+  if(this.drop>this.interval){
+    this.player.pos.y++;
+    if(this.collide()){
+      this.player.pos.y--;
+      this.merge();
+      this.clear();
+      this.newPiece();
+    }
+    this.drop=0;
+  }
+
+  this.ctx.clearRect(0,0,300,600);
+  this.arena.forEach((r,y)=>r.forEach((v,x)=>{
+    if(v) drawLego(this.ctx,x,y,COLORS[v]);
+  }));
+  this.player.matrix.forEach((r,y)=>r.forEach((v,x)=>{
+    if(v) drawLego(this.ctx,x+this.player.pos.x,y+this.player.pos.y,COLORS[v]);
+  }));
+};
+
+// ---------- 캔버스 가져오기 ----------
+const canvas1 = document.getElementById("player1");
+const canvas2 = document.getElementById("player2");
+const scoreEl1 = document.getElementById("scoreP1");
+const scoreEl2 = document.getElementById("scoreP2");
+
+const player1 = new Game(canvas1, scoreEl1, "Player 1");
+const player2 = new Game(canvas2, scoreEl2, "Player 2");
+
+// ---------- 게임 루프 ----------
+let last=0;
+function loop(t=0){
+  const dt=t-last; last=t;
+  player1.update(dt);
+  player2.update(dt);
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ---------- 터치/버튼 입력 ----------
+function setupButton(btnId, action){
+  const btn = document.getElementById(btnId);
+  btn.addEventListener("touchstart", e => { action(); e.preventDefault(); });
+  btn.addEventListener("mousedown", e => { action(); e.preventDefault(); });
+}
+
+// Player1 버튼
+setupButton("p1-left",()=>player1.player.pos.x--);
+setupButton("p1-right",()=>player1.player.pos.x++);
+setupButton("p1-down",()=>player1.player.pos.y++);
+setupButton("p1-rotate",()=>{
+  const old=clone(player1.player.matrix);
+  player1.player.matrix=rotate(player1.player.matrix);
+  if(player1.collide()) player1.player.matrix=old;
+});
+
+// Player2 버튼
+setupButton("p2-left",()=>player2.player.pos.x--);
+setupButton("p2-right",()=>player2.player.pos.x++);
+setupButton("p2-down",()=>player2.player.pos.y++);
+setupButton("p2-rotate",()=>{
+  const old=clone(player2.player.matrix);
+  player2.player.matrix=rotate(player2.player.matrix);
+  if(player2.collide()) player2.player.matrix=old;
+});
+
+// ---------- 키보드 지원 (선택) ----------
+document.addEventListener("keydown", e => {
+  // Player1 WASD
+  if(e.key==="a") player1.player.pos.x--;
+  if(e.key==="d") player1.player.pos.x++;
+  if(e.key==="s") player1.player.pos.y++;
+  if(e.key==="w"){
+    const old=clone(player1.player.matrix);
+    player1.player.matrix=rotate(player1.player.matrix);
+    if(player1.collide()) player1.player.matrix=old;
+  }
+  // Player2 화살표
+  if(e.key==="ArrowLeft") player2.player.pos.x--;
+  if(e.key==="ArrowRight") player2.player.pos.x++;
+  if(e.key==="ArrowDown") player2.player.pos.y++;
+  if(e.key==="ArrowUp"){
+    const old=clone(player2.player.matrix);
+    player2.player.matrix=rotate(player2.player.matrix);
+    if(player2.collide()) player2.player.matrix=old;
+  }
+});
+
+// ---------- 승리 ----------
+function endGame(winner){
+  document.getElementById("winner").style.display="flex";
+  document.getElementById("winnerText").textContent=`🎉 ${winner} 승리!`;
+}
+</script>
+
+</body>
+</html>
+
+.
